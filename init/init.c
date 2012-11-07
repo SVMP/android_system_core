@@ -1,4 +1,19 @@
 /*
+Copyright 2013 The MITRE Corporation, All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this work except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+/*
  * Copyright (C) 2008 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -232,7 +247,7 @@ void service_start(struct service *svc, const char *dynamic_args)
     }
 #endif
 
-    NOTICE("starting '%s'\n", svc->name);
+    ERROR("starting '%s'\n", svc->name);
 
     pid = fork();
 
@@ -480,6 +495,15 @@ static void msg_start(const char *name)
         free(tmp);
 }
 
+int svc_start_extern(const char *name){
+	struct service *svc;
+        svc = service_find_by_name(name);
+	if(!svc)
+		return -1;
+        service_start(svc, NULL);
+	return 0;
+}
+
 static void msg_stop(const char *name)
 {
     struct service *svc = service_find_by_name(name);
@@ -560,7 +584,7 @@ static int wait_for_coldboot_done_action(int nargs, char **args)
     INFO("wait for %s\n", coldboot_done);
     ret = wait_for_file(coldboot_done, COMMAND_RETRY_TIMEOUT);
     if (ret)
-        ERROR("Timed out waiting for %s\n", coldboot_done);
+        ERROR("!Timed out waiting for %s\n", coldboot_done);
     return ret;
 }
 
