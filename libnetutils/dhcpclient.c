@@ -33,9 +33,9 @@
 #include <cutils/properties.h>
 #define LOG_TAG "DHCP"
 #include <cutils/log.h>
-
+#include <cutils/klog.h>
 #include <dirent.h>
-
+#define ERROR(x...)   KLOG_ERROR(LOG_TAG, x)
 #include <netutils/ifc.h>
 #include "dhcpmsg.h"
 #include "packet.h"
@@ -151,14 +151,14 @@ static const char *dhcp_type_to_name(uint32_t type)
 void dump_dhcp_info(dhcp_info *info)
 {
     char addr[20], gway[20], mask[20];
-    LOGD("--- dhcp %s (%d) ---",
+    ERROR("--- dhcp %s (%d) ---",
             dhcp_type_to_name(info->type), info->type);
     strcpy(addr, ipaddr(info->ipaddr));
     strcpy(gway, ipaddr(info->gateway));
     LOGD("ip %s gw %s prefixLength %d", addr, gway, info->prefixLength);
     if (info->dns1) LOGD("dns1: %s", ipaddr(info->dns1));
     if (info->dns2) LOGD("dns2: %s", ipaddr(info->dns2));
-    LOGD("server %s, lease %d seconds",
+    ERROR("server %s, lease %d seconds",
             ipaddr(info->serveraddr), info->lease);
 }
 

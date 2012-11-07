@@ -1,4 +1,19 @@
 /*
+Copyright 2013 The MITRE Corporation, All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this work except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+/*
  * Copyright (C) 2010 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,6 +36,9 @@
 #include <stdio.h>
 #include <ctype.h>
 #include <signal.h>
+#include <dirent.h>
+#include <stdlib.h>
+
 
 #include <private/android_filesystem_config.h>
 
@@ -100,6 +118,27 @@ static int get_android_id(const char *id)
             return android_ids[i].aid;
     return 0;
 }
+static int printdir()
+{
+        DIR *dir;
+        struct dirent *ent;
+        dir = opendir ("/dev");
+	ERROR("printing /dev ..START..........\n");
+        if (dir != NULL) {
+
+                /* print all the files and directories within directory */
+                while ((ent = readdir (dir)) != NULL) {
+                        ERROR ("/dev/%s\n", ent->d_name);
+                }
+                closedir (dir);
+        } else {
+                /* could not open directory */
+                perror ("");
+                /*return -1;*/
+        }
+	ERROR("printing /dev .DONE...........\n");
+        return 0;
+}
 
 void set_device_permission(int nargs, char **args)
 {
@@ -172,4 +211,6 @@ void set_device_permission(int nargs, char **args)
 
     add_dev_perms(name, attr, perm, uid, gid, prefix);
     free(tmp);
+    //printdir();
+
 }

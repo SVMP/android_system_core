@@ -1,4 +1,20 @@
 /*
+Copyright 2013 The MITRE Corporation, All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this work except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+/*
  * Copyright (C) 2008 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,6 +47,7 @@
 #include <sys/resource.h>
 #include <linux/loop.h>
 #include <cutils/partition_utils.h>
+#include <dirent.h>
 
 #include "init.h"
 #include "keywords.h"
@@ -274,8 +291,31 @@ static struct {
     { "rw",         0 },
     { "remount",    MS_REMOUNT },
     { "defaults",   0 },
+    { "init",  	MS_REC}, /* new option to initalize volume */
     { 0,            0 },
 };
+
+static int printdir(char *path)
+{
+        DIR *dir;
+        struct dirent *ent;
+        dir = opendir (path);
+	ERROR("printing %s ..START..........\n",path);
+        if (dir != NULL) {
+
+                /* print all the files and directories within directory */
+                while ((ent = readdir (dir)) != NULL) {
+                        ERROR ("%s/%s\n", path,ent->d_name);
+                }
+                closedir (dir);
+        } else {
+                /* could not open directory */
+                perror ("");
+                /*return -1;*/
+        }
+	ERROR("printing %s .DONE...........\n",path);
+        return 0;
+}
 
 #define DATA_MNT_POINT "/data"
 
@@ -288,6 +328,7 @@ int do_mount(int nargs, char **args)
     unsigned flags = 0;
     int n, i;
     int wait = 0;
+    int init = 0;
 
     for (n = 4; n < nargs; n++) {
         for (i = 0; mount_flags[i].name; i++) {
@@ -298,12 +339,22 @@ int do_mount(int nargs, char **args)
         }
 
         if (!mount_flags[i].name) {
-            if (!strcmp(args[n], "wait"))
-                wait = 1;
+            if (!strcmp(args[n], "wait")){
+		    ERROR("wait for volume option set..\n");
+		    wait = 1;
+	    }
             /* if our last argument isn't a flag, wolf it up as an option string */
             else if (n + 1 == nargs)
                 options = args[n];
         }
+    }
+
+    if (flags & MS_REC){
+	    int tmp = MS_REC;
+	    ERROR("initialize volume option set..\n");
+	    init=1;
+	    // unset MS_REC flag because we are not acually using it for it's intended purpose
+	    flags &= !tmp;
     }
 
     system = args[1];
@@ -366,9 +417,24 @@ int do_mount(int nargs, char **args)
         ERROR("out of loopback devices");
         return -1;
     } else {
-        if (wait)
-            wait_for_file(source, COMMAND_RETRY_TIMEOUT);
-        if (mount(source, target, system, flags, options) < 0) {
+        if (wait) {
+		struct stat info;
+		int err; 
+
+		ERROR("infinite loop WAITING to mount %s to %s\n",source,target);
+		while (wait_for_file(source, COMMAND_RETRY_TIMEOUT) < 0 ){
+			ERROR("WAITING to mount %s to %s\n",source,target);
+			usleep(20000);
+		}
+		err=stat(source, &info);
+		ERROR("sanity check : stat() for  %s returns %d \n",source,err);
+	}
+	int err=mount(source, target, system, flags, options);
+	ERROR("attempting to mount %s to %s\n",source,target);
+	printdir("/dev");
+	printdir("/dev/blocks");
+        //if (mount(source, target, system, flags, options) < 0) {
+        if (err < 0) {
             /* If this fails, it may be an encrypted filesystem
              * or it could just be wiped.  If wiped, that will be
              * handled later in the boot process.
@@ -378,11 +444,47 @@ int do_mount(int nargs, char **args)
              * Then save the orig mount parms in properties
              * for vold to query when it mounts the real
              * encrypted /data.
-             */
+             */	
+	    if (partition_wiped(source) && !strcmp(target,DATA_MNT_POINT)) {
+		    ERROR("%s is wiped\n",source);
+		    if (init){
+			struct stat info;
+			char *newargv[] = {"/sbin/mkfs.ext2", source, NULL};
+			char *newenviron[] = { NULL };
+			ERROR("partitioning %s\n",source);
+			if (stat("/sbin/mkfs.ext2", &info) == -1){
+				ERROR("/sbin/mkfs.ext2 doesn't exist!: %s\n",strerror(errno));
+				//printdir("/");
+				//printdir("/sbin");
+			}
+			else {
+				ERROR("/sbin/mkfs.ext2 executing service");
+				// get the last 3 characters of DATA_MNT_POINT
+				char buf[20];
+				char *Dev = source;
+				int i=strlen(Dev);
+				if (i-3 >0) // sanity check that src is at least 3 characters long 
+					Dev+=(i-3);
+				sprintf(buf,"initialize%s",Dev);
+
+				if(svc_start_extern(buf) == -1)
+					ERROR("make sure %s is in init.rc\n",buf);
+				sleep(10);
+			}
+			ERROR("done partitioning \n");
+			if(mount(source, target, system, flags, options) < 0)
+				ERROR("Fatal error mounting %s to %s:%s\n",source,target,strerror(errno));
+			else{
+				ERROR("successfully partitioned and mounted %s to %s\n",source,target);
+				goto exit_success;
+			}
+		    }
+	    }
             if (!strcmp(target, DATA_MNT_POINT) && !partition_wiped(source)) {
                 const char *tmpfs_options;
 
                 tmpfs_options = property_get("ro.crypto.tmpfs_options");
+		ERROR("trying again to mount %s to %s\n", source,target);
 
                 if (mount("tmpfs", target, "tmpfs", MS_NOATIME | MS_NOSUID | MS_NODEV,
                     tmpfs_options) < 0) {
@@ -395,9 +497,12 @@ int do_mount(int nargs, char **args)
                 property_set("ro.crypto.state", "encrypted");
                 property_set("vold.decrypt", "1");
             } else {
+		ERROR("still unsuccessfully mounted %s to %s\n", source,target);
                 return -1;
             }
         }
+	else 
+		ERROR("successfully mount %s to %s\n", source,target);
 
         if (!strcmp(target, DATA_MNT_POINT)) {
             char fs_flags[32];

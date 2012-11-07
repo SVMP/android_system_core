@@ -1,4 +1,19 @@
 /*
+Copyright 2013 The MITRE Corporation, All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this work except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+/*
  * Copyright (C) 2007 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -321,6 +336,7 @@ static void parse_event(const char *msg, struct uevent *uevent)
     log_event_print("event { '%s', '%s', '%s', '%s', %d, %d }\n",
                     uevent->action, uevent->path, uevent->subsystem,
                     uevent->firmware, uevent->major, uevent->minor);
+    ERROR("action: %s, path %s\n", uevent->action, uevent->path);
 }
 
 static char **get_character_device_symlinks(struct uevent *uevent)
@@ -805,6 +821,42 @@ static void do_coldboot(DIR *d)
     }
 }
 
+static void do_coldboot_d(DIR *d)
+{
+    struct dirent *de;
+    int dfd, fd;
+
+    dfd = dirfd(d);
+
+    fd = openat(dfd, "uevent", O_WRONLY);
+    if(fd >= 0) {
+        write(fd, "add\n", 4);
+        close(fd);
+        handle_device_fd();
+    }
+
+    while((de = readdir(d))) {
+        DIR *d2;
+
+        if(de->d_type != DT_DIR || de->d_name[0] == '.')
+            continue;
+
+        fd = openat(dfd, de->d_name, O_RDONLY | O_DIRECTORY);
+        if(fd < 0)
+            continue;
+
+	//ERROR ("do_coldboot %s\n", de->d_name);
+
+        d2 = fdopendir(fd);
+        if(d2 == 0)
+            close(fd);
+        else {
+            do_coldboot_d(d2);
+            closedir(d2);
+        }
+    }
+}
+
 static void coldboot(const char *path)
 {
     DIR *d = opendir(path);
@@ -812,6 +864,36 @@ static void coldboot(const char *path)
         do_coldboot(d);
         closedir(d);
     }
+}
+static void coldboot_d(const char *path)
+{
+    DIR *d = opendir(path);
+    if(d) {
+        do_coldboot_d(d);
+        closedir(d);
+    }
+}
+
+static int printdir(char *path)
+{
+        DIR *dir;
+        struct dirent *ent;
+        dir = opendir (path);
+	//ERROR("printing %s ..START..........\n",path);
+        if (dir != NULL) {
+
+                /* print all the files and directories within directory */
+                while ((ent = readdir (dir)) != NULL) {
+                        //ERROR ("%s/%s\n", path,ent->d_name);
+                }
+                closedir (dir);
+        } else {
+                /* could not open directory */
+                perror ("");
+                /*return -1;*/
+        }
+	//ERROR("printing %s .DONE...........\n",path);
+        return 0;
 }
 
 void device_init(void)
@@ -831,8 +913,10 @@ void device_init(void)
     if (stat(coldboot_done, &info) < 0) {
         t0 = get_usecs();
         coldboot("/sys/class");
+	//ERROR("coldboot done with /sys/class");
         coldboot("/sys/block");
-        coldboot("/sys/devices");
+	//ERROR("coldboot done with /sys/block: next /sys/devices");
+	coldboot("/sys/devices");
         t1 = get_usecs();
         fd = open(coldboot_done, O_WRONLY|O_CREAT, 0000);
         close(fd);
@@ -840,6 +924,9 @@ void device_init(void)
     } else {
         log_event_print("skipping coldboot, already done\n");
     }
+
+    //printdir("/dev");
+    //printdir("/dev/block");
 }
 
 int get_device_fd()
