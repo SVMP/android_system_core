@@ -498,96 +498,45 @@ int do_mount(int nargs, char **args)
         ERROR("out of loopback devices");
         return -1;
     } else {
-<<<<<<< HEAD
         if (wait)
             wait_for_file(source, COMMAND_RETRY_TIMEOUT);
         if (mount(source, target, system, flags, options) < 0) {
-            return -1;
-=======
-        if (wait) {
-		struct stat info;
-		int err; 
+       		if (partition_wiped(source) && !strcmp(target,DATA_MNT_POINT)) {
+           		ERROR("%s is wiped\n",source);
+            	if (init){
+            	struct stat info;
+            	char *newargv[] = {"/sbin/mkfs.ext2", source, NULL};
+            	char *newenviron[] = { NULL };
+            	ERROR("partitioning %s\n",source);
+            	if (stat("/sbin/mkfs.ext2", &info) == -1) {
+                	ERROR("/sbin/mkfs.ext2 doesn't exist!: %s\n",strerror(errno));
+                	//printdir("/");
+                	//printdir("/sbin");
+            	}
+            	else {
+                	ERROR("/sbin/mkfs.ext2 executing service");
+                	// get the last 3 characters of DATA_MNT_POINT
+                	char buf[20];
+                	char *Dev = source;
+                	int i=strlen(Dev);
+                	if (i-3 >0) // sanity check that src is at least 3 characters long
+                    	Dev+=(i-3);
+                	sprintf(buf,"initialize%s",Dev);
 
-		ERROR("infinite loop WAITING to mount %s to %s\n",source,target);
-		while (wait_for_file(source, COMMAND_RETRY_TIMEOUT) < 0 ){
-			ERROR("WAITING to mount %s to %s\n",source,target);
-			usleep(20000);
-		}
-		err=stat(source, &info);
-		ERROR("sanity check : stat() for  %s returns %d \n",source,err);
-	}
-	int err=mount(source, target, system, flags, options);
-	ERROR("attempting to mount %s to %s\n",source,target);
-	printdir("/dev");
-	printdir("/dev/blocks");
-        //if (mount(source, target, system, flags, options) < 0) {
-        if (err < 0) {
-            /* If this fails, it may be an encrypted filesystem
-             * or it could just be wiped.  If wiped, that will be
-             * handled later in the boot process.
-             * We only support encrypting /data.  Check
-             * if we're trying to mount it, and if so,
-             * assume it's encrypted, mount a tmpfs instead.
-             * Then save the orig mount parms in properties
-             * for vold to query when it mounts the real
-             * encrypted /data.
-             */	
-	    if (partition_wiped(source) && !strcmp(target,DATA_MNT_POINT)) {
-		    ERROR("%s is wiped\n",source);
-		    if (init){
-			struct stat info;
-			char *newargv[] = {"/sbin/mkfs.ext2", source, NULL};
-			char *newenviron[] = { NULL };
-			ERROR("partitioning %s\n",source);
-			if (stat("/sbin/mkfs.ext2", &info) == -1){
-				ERROR("/sbin/mkfs.ext2 doesn't exist!: %s\n",strerror(errno));
-				//printdir("/");
-				//printdir("/sbin");
-			}
-			else {
-				ERROR("/sbin/mkfs.ext2 executing service");
-				// get the last 3 characters of DATA_MNT_POINT
-				char buf[20];
-				char *Dev = source;
-				int i=strlen(Dev);
-				if (i-3 >0) // sanity check that src is at least 3 characters long 
-					Dev+=(i-3);
-				sprintf(buf,"initialize%s",Dev);
-
-				if(svc_start_extern(buf) == -1)
-					ERROR("make sure %s is in init.rc\n",buf);
-				sleep(10);
-			}
-			ERROR("done partitioning \n");
-			if(mount(source, target, system, flags, options) < 0)
-				ERROR("Fatal error mounting %s to %s:%s\n",source,target,strerror(errno));
-			else{
-				ERROR("successfully partitioned and mounted %s to %s\n",source,target);
-				goto exit_success;
-			}
-		    }
-	    }
-            if (!strcmp(target, DATA_MNT_POINT) && !partition_wiped(source)) {
-                const char *tmpfs_options;
-
-                tmpfs_options = property_get("ro.crypto.tmpfs_options");
-		ERROR("trying again to mount %s to %s\n", source,target);
-
-                if (mount("tmpfs", target, "tmpfs", MS_NOATIME | MS_NOSUID | MS_NODEV,
-                    tmpfs_options) < 0) {
-                    return -1;
-                }
-
-                /* Set the property that triggers the framework to do a minimal
-                 * startup and ask the user for a password
-                 */
-                property_set("ro.crypto.state", "encrypted");
-                property_set("vold.decrypt", "1");
-            } else {
-		ERROR("still unsuccessfully mounted %s to %s\n", source,target);
-                return -1;
+                	if(svc_start_extern(buf) == -1)
+                    	ERROR("make sure %s is in init.rc\n",buf);
+                	sleep(10);
+            	}
+            	ERROR("done partitioning \n");
+            	if(mount(source, target, system, flags, options) < 0)
+                	ERROR("Fatal error mounting %s to %s:%s\n",source,target,strerror(errno));
+            	else {
+                	ERROR("successfully partitioned and mounted %s to %s\n",source,target);
+                	goto exit_success;
+            	}
             }
->>>>>>> d255df9... SVMP volume mounting and service startup to init
+        } else
+            return -1;
         }
 	else 
 		ERROR("successfully mount %s to %s\n", source,target);
